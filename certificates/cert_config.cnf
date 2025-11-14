@@ -1,0 +1,22 @@
+[req]
+default_bits = 2048
+prompt = no
+default_md = sha256
+distinguished_name = dn
+x509_extensions = v3_ca
+
+[dn]
+C=ET
+ST=Addis Ababa
+L=Addis Ababa
+O=Test Organization
+OU=Test Unit
+CN=C2PA-VerifyVideo
+emailAddress=abeltibbeshana@gmail.com
+
+[v3_ca]
+subjectKeyIdentifier=hash
+authorityKeyIdentifier=keyid:always,issuer
+basicConstraints = critical,CA:TRUE
+keyUsage = critical, digitalSignature, keyCertSign
+extendedKeyUsage = codeSigning
