@@ -17,8 +17,8 @@ class Settings(BaseSettings):
     MAX_FILE_SIZE_MB: int = 500
     
     # C2PA related
-    CERT_PATH: str = "./certificates/certificate.pem"
-    PRIVATE_KEY_PATH: str = "./certificates/private_key.pem"
+    CERT_PATH: str = "./certificates/rsa_certificate.pem"
+    PRIVATE_KEY_PATH: str = "./certificates/rsa_private_key.pem"
     MANIFEST_DIR: str = "./manifests"
     
     class Config:

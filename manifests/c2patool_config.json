@@ -1,0 +1,4 @@
+{
+  "sign_cert": "rsa_certificate.pem",
+  "pkey": "rsa_private_key.pem"
+}
