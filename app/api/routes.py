@@ -8,6 +8,7 @@ from datetime import datetime
 
 from app.models.schemas import VideoSignRequest, SigningResponse, ErrorResponse
 from app.core.config import settings
+from app.services.c2pa_service import c2pa_service
 
 router = APIRouter()
 
@@ -54,13 +55,13 @@ async def sign_video(
     ),
     organization: str = Form(
         ..., 
-        description="Organization name (e.g., 'Acme AI Corporation')",
-        example="Acme AI Corp"
+        description="Organization name (e.g., 'Test Organization')",
+        example="Test Org"
     ),
     ai_tool: str = Form(
         ..., 
         description="AI tool/model used to generate the video",
-        example="Runway Gen-3"
+        example="Veo 3"
     ),
     title: Optional[str] = Form(
         None, 
@@ -95,11 +96,15 @@ async def sign_video(
 ```bash
     curl -X POST "http://localhost:8000/api/v1/sign-video" \\
       -F "video=@my_video.mp4" \\
-      -F "organization=Acme AI Corp" \\
-      -F "ai_tool=Runway Gen-3" \\
+      -F "organization=Test Org" \\
+      -F "ai_tool=Veo 3" \\
       -F "title=My AI Video" \\
       -F "description=A beautiful AI-generated video"
 ```
+    
+    ### Verification:
+    After downloading the signed video, verify it at:
+    https://verify.contentauthenticity.org
     """
     
     # Validate file type
@@ -121,14 +126,17 @@ async def sign_video(
     input_path = os.path.join(settings.UPLOAD_DIR, f"temp_{job_id}{file_ext}")
     output_path = os.path.join(settings.UPLOAD_DIR, f"{base_filename}{file_ext}")
     output_manifest_path = os.path.join(settings.UPLOAD_DIR, f"{base_filename}.manifest.json")
+    manifest_path = None
     
     try:
         # Save uploaded file
+        print(f"📤 Uploading video: {video.filename}")
         with open(input_path, "wb") as buffer:
             content = await video.read()
             buffer.write(content)
         
         file_size_mb = get_file_size_mb(input_path)
+        print(f"📊 File size: {file_size_mb:.2f} MB")
         
         # Check file size limit
         if file_size_mb > settings.MAX_FILE_SIZE_MB:
@@ -138,25 +146,67 @@ async def sign_video(
                 detail=f"File too large ({file_size_mb:.1f}MB). Maximum size: {settings.MAX_FILE_SIZE_MB}MB"
             )
         
-        # TODO: In next step, we'll add:
-        # 1. Generate manifest
-        # 2. Sign video with c2patool
-        # 3. Extract manifest
+        # Generate manifest
+        print(f"📝 Generating C2PA manifest...")
+        manifest_path = c2pa_service.generate_manifest(
+            organization=organization,
+            ai_tool=ai_tool,
+            title=title,
+            description=description
+        )
+        print(f"✅ Manifest created: {manifest_path}")
         
-        # For now, just return success with the upload
+        # Sign the video
+        print(f"🔐 Signing video with C2PA credentials...")
+        result = c2pa_service.sign_video(
+            input_video_path=input_path,
+            output_video_path=output_path,
+            manifest_path=manifest_path
+        )
+        
+        if not result['success']:
+            raise Exception(result.get('error', 'Signing failed'))
+        
+        print(f"✅ Video signed successfully")
+        
+        # Extract manifest to separate JSON file
+        print(f"📄 Extracting manifest to JSON...")
+        manifest_extracted = c2pa_service.extract_manifest(
+            output_path, 
+            output_manifest_path
+        )
+        
+        if manifest_extracted:
+            print(f"✅ Manifest extracted: {output_manifest_path}")
+        else:
+            print(f"⚠️  Warning: Could not extract manifest to separate file")
+        
+        # Clean up temporary files
+        print(f"🧹 Cleaning up temporary files...")
+        if os.path.exists(input_path):
+            os.remove(input_path)
+        if manifest_path and os.path.exists(manifest_path):
+            os.remove(manifest_path)
+        
+        print(f"✅ Process complete!")
+        
+        # Build response
+        base_url = f"http://{settings.HOST}:{settings.PORT}"
+        
         return SigningResponse(
             status="ok",
-            message=f"Video uploaded successfully ({file_size_mb:.1f}MB). Signing functionality will be added next.",
+            message="C2PA signing succeeded in embedded mode.",
             job_id=job_id,
             links={
-                "temp_path": input_path,
-                "output_path": output_path,
-                "manifest_path": output_manifest_path
+                "download_url": f"{base_url}/files/{os.path.basename(output_path)}",
+                "manifest_url": f"{base_url}/files/{os.path.basename(output_manifest_path)}" if manifest_extracted else None,
+                "mode": "embedded",
+                "verify_at": "https://verify.contentauthenticity.org"
             },
             metadata={
                 "original_filename": video.filename,
                 "file_size_mb": round(file_size_mb, 2),
-                "uploaded_at": datetime.utcnow().isoformat() + "Z",
+                "signed_at": datetime.utcnow().isoformat() + "Z",
                 "organization": organization,
                 "ai_tool": ai_tool,
                 "title": title,
@@ -168,12 +218,14 @@ async def sign_video(
         raise
     except Exception as e:
         # Clean up on error
-        if os.path.exists(input_path):
-            try:
-                os.remove(input_path)
-            except:
-                pass
-        raise HTTPException(status_code=500, detail=f"Error processing video: {str(e)}")
+        print(f"❌ Error: {str(e)}")
+        for path in [input_path, output_path, manifest_path, output_manifest_path]:
+            if path and os.path.exists(path):
+                try:
+                    os.remove(path)
+                except:
+                    pass
+        raise HTTPException(status_code=500, detail=f"Error signing video: {str(e)}")
 
 
 @router.get(
