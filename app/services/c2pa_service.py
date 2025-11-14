@@ -123,10 +123,9 @@ class C2PAService:
                 "c2patool",
                 input_video_path,
                 "--manifest", manifest_path,
-                "--private-key", self.private_key_path,
-                "--sign-cert", self.cert_path,
                 "--output", output_video_path,
-                "--force"  # Overwrite if exists
+                "--force",  # to overwrite if exists already
+                "--signer-path", str(Path(self.cert_path).parent),
             ]
             
             # Execute c2patool
