@@ -221,25 +221,57 @@ class C2PAService:
         """
         
         try:
+            # Convert to absolute paths
+            abs_video_path = os.path.abspath(video_path)
+            abs_output_path = os.path.abspath(output_json_path)
+            
+            # Use c2patool to extract manifest in JSON format
             cmd = [
                 "c2patool",
-                video_path,
-                "--output", output_json_path,
+                abs_video_path,
+                "--info",
+                "--output", abs_output_path,
                 "--force"
             ]
+            
+            print(f"🔧 Extracting manifest from: {abs_video_path}")
+            print(f"🔧 Output to: {abs_output_path}")
+            print(f"🔧 Command: {' '.join(cmd)}")
             
             result = subprocess.run(
                 cmd, 
                 capture_output=True, 
-                text=True, 
-                check=True,
+                text=True,
                 timeout=60
             )
             
+            # If --info --output doesn't work, try alternate method
+            if result.returncode != 0 or not os.path.exists(output_json_path):
+                print(f"⚠️  First method failed, trying alternate extraction...")
+                
+                # Method 2: Get manifest as stdout and save it
+                cmd2 = ["c2patool", abs_video_path, "--info"]
+                result2 = subprocess.run(
+                    cmd2,
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                    timeout=60
+                )
+                
+                # Save stdout to file
+                with open(abs_output_path, 'w', encoding='utf-8') as f:
+                    f.write(result2.stdout)
+                
+                print(f"✅ Manifest extracted using alternate method")
+            
             return os.path.exists(output_json_path)
             
+        except subprocess.CalledProcessError as e:
+            print(f"❌ Failed to extract manifest: {e.stderr if e.stderr else str(e)}")
+            return False
         except Exception as e:
-            print(f"Failed to extract manifest: {e}")
+            print(f"❌ Failed to extract manifest: {e}")
             return False
     
     def verify_video(self, video_path: str) -> Dict[str, any]:
